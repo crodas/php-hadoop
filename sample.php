@@ -2,14 +2,17 @@
 include("hadoop.php");
 
 class InitCluster extends Job {
-    function map($key, $value) {
-        if (rand(0,1) == 1) {
+    function map($value) {
+        if (rand(0,50) == 33) {
+            list($key,) = explode("||", $value, 2);
+            $key = substr($key, strrpos($key,"=")+1);
             /* reduce the number of possible centroids */
-            $this->EmitIntermediate($key, serialize($value) );
+            $this->EmitIntermediate($key, $value );
         }
     }
 
-    function reduce($key) {
+    function reduce($key, &$values) {
+        $this->Emit($key, 1);
     }
 }
 
