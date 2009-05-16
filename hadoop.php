@@ -8,6 +8,7 @@ final class Hadoop
     private $_jar = "contrib/streaming/hadoop-0.18.3-streaming.jar";
     private $_tmp;
     private $_id;
+    private $_reduce = 4;
 
 
     function __construct()
@@ -25,7 +26,8 @@ final class Hadoop
             print $r;
         }
         fclose($p);
-        
+        @unlink($this->_getFileName("map"));
+        @unlink($this->_getFileName("reduce"));
     }
 
     function setHome($file)
@@ -66,19 +68,16 @@ final class Hadoop
         $code = implode("\n", $code);
 
         /* save the map */
-        $map = str_replace("hadoop.php", __FILE__, $map);
         $map = str_replace("/*name*/", $info->getName(), $map);
         $map = str_replace("/*class*/", $code, $map);
         file_put_contents($this->_getFileName("map"), $map);
         chmod($this->_getFileName("map"),0777);
 
         /* save the reduce */
-        $reduce = str_replace("hadoop.php", __FILE__, $reduce);
         $reduce = str_replace("/*name*/", $info->getName(), $reduce);
         $reduce = str_replace("/*class*/", $code, $reduce);
         file_put_contents($this->_getFileName("reduce"), $reduce);
         chmod($this->_getFileName("reduce"),0777);
-        
     }
 
     private function _getFileName($name)
@@ -93,8 +92,13 @@ final class Hadoop
         $opath   = $this->_opath;
         $path    = $this->_path;
 
-        $cmd = sprintf("%sbin/hadoop jar %s -input %s -output %s -mapper %s -reducer %s   -jobconf mapred.reduce.tasks=12 -jobconf stream.num.map.output.key.fields=2", $path, $path.$jarpath, $ipath, $opath, $this->_getFileName("map"), $this->_getFileName("reduce"));
-
+        $cmd = sprintf("%sbin/hadoop jar %s -input %s -output %s -mapper %s -reducer %s  -jobconf mapred.reduce.tasks=%d -file %s -file %s -file %s", 
+                $path, $path.$jarpath, $ipath, $opath, 
+                basename($this->_getFileName("map")), 
+                basename($this->_getFileName("reduce")), $this->_reduce,
+                $this->_getFileName("map"), $this->_getFileName("reduce"),__FILE__
+            );
+        echo "$cmd\n\n\n";
         return $cmd;
     }
 }
@@ -103,17 +107,21 @@ abstract class Job
 {
     final function EmitIntermediate($key, $value)
     {
-        printf("%s\t%s%s",$key, base64_encode($value), PHP_EOL);
+        printf("%s\t%s\n",$key, $value);
     }
 
     final function Emit($key, $value)
     {
-        printf("%s\t%s%s",$key, $value, PHP_EOL);
+        printf("%s\t%s\n",$key, $value);
     }
 
     final function RunMap()
     {
         while (($line = fgets(STDIN)) !== false) {
+            $line = substr($line, 0, strlen($line)-1);
+            if (strlen($line) == 0) {
+                continue;
+            }
             $this->map($line);
         }
 
@@ -122,15 +130,19 @@ abstract class Job
     final function RunReduce()
     {
         $values = array();
+
         while (($line = fgets(STDIN)) !== false) {
             list($key, $value) = explode("\t", $line, 2);
             if (!isset($values[$key])) {
                 $values[$key] = array();
             }
-            $values[$key][] = $value;
+            $values[$key][] = substr($value,0,strlen($value) -1);
         }
 
         foreach (array_keys($values) as $id) {
+            if (count($values[$id]) == 0) {
+                continue;
+            }
             $this->reduce($id, $values[$id]);
         }
     }
