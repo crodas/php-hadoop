@@ -5,27 +5,25 @@ include("hadoop.php");
 class InitCluster extends Job {
     function __construct() {
         define("MIN_WORD_LENGTH", 3);
-        define("MIN_WORD_FREQ", 2);
+        define("MIN_WORD_FREQ", 3);
     }
     function map($value) {
         if (strpos($value,"||") == 0) {
             return;
         }
         list($url, $words) = explode("||", $value);
-        if (strpos($url, "?pid=") !== false) {
-            $docid = "abc". substr($url, strrpos($url, "=") + 1);
-        } else {
-            $docid = "ln". substr($url, strrpos($url, "=") + 1);
-        }
-        if (!isset($docid) || $docid == "") {
-            return;
-        }
-        $docid = $url;
+        $words = array();
         foreach(preg_split("/[^a-zA-Z]/", $words,0,PREG_SPLIT_NO_EMPTY) as $word) {
             if (strlen($word) < MIN_WORD_LENGTH) {
                 continue;
             }
-            $this->EmitIntermediate(strtolower($word), $docid);
+            if (!isset($words[$word])) {
+                $words[$word] = 0;
+            }
+            $words[$word] += 1; 
+        }
+        foreach ($words as $word => $count) {
+            $this->EmitIntermediate($docid, "$word,$count");
         }
     }
 
