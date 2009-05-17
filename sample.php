@@ -16,6 +16,7 @@ class InitCluster extends Job
         list($url, $text) = explode("||", $value);
         $words = array();
         foreach(preg_split("/[^a-zA-Z]/", $text,0,PREG_SPLIT_NO_EMPTY) as $word) {
+            $word = strtolower($word);
             if (strlen($word) < MIN_WORD_LENGTH) {
                 continue;
             }

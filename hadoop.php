@@ -3,12 +3,14 @@ final class PArray {
     private $_dir;
     private $_data = array();
     private $_cnt;
+    private $_count = 0;
+    private $_disk  = 0;
+    private $_db;
 
     function __construct()
     {
-        $this->_dir = tempnam("/tmp", "");
-        unlink($this->_dir);
-        mkdir($this->_dir);
+        $this->_dir = tempnam("/tmp", "").".db";
+        $this->_db  = dba_open($this->_dir, "c", "db4");
     }
 
     function __set($key, $value) 
@@ -17,23 +19,26 @@ final class PArray {
 
         if (!isset($data)) {
             $data = array();
+            $this->_count++;
         }
 
         if ($data === true) {
-            $tmp   = & $this->__get($key);
-            $tmp[] = $value;
-            $k = md5($key);
-            file_put_contents($this->_dir."/$k", serialize($tmp));
-            $data = true;
-            return;
+            $data  = & $this->__get($key);
         }
 
         $data[] = $value;
 
-        if ((memory_get_usage()/(1024*1024)) > 36) {
-            $k = md5($key);
-            file_put_contents($this->_dir."/$k", serialize($data));
+        $count = & $this->_count;
+        $disk  = & $this->_disk;
+        while ((memory_get_usage()/(1024*1024)) > 36) {
+            if ($count < $disk * 1.1) {
+                break;
+            }
+            if (!dba_insert($key, serialize($data), $this->_db)) {
+                dba_replace($key, serialize($data), $this->_db);
+            }
             $data = true;
+            $disk++;
         }
 
     }
@@ -41,8 +46,7 @@ final class PArray {
     function & __get($key)
     {
         if ($this->_data[$key] === true) {
-            $k     = md5($key);
-            $value = unserialize(file_get_contents($this->_dir."/$k"));
+            $value = unserialize(dba_fetch($key, $this->_db));
             return $value;
         }
         return $this->_data[$key];
@@ -55,6 +59,9 @@ final class PArray {
 
     function __destruct()
     {
+        dba_close($this->_db);
+        unlink($this->_dir);
+        return;
         foreach (glob($this->_dir."/*") as $file) {
             unlink($file);
         }
