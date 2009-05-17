@@ -1,4 +1,66 @@
 <?php
+final class PArray {
+    private $_dir;
+    private $_data = array();
+    private $_cnt;
+
+    function __construct()
+    {
+        $this->_dir = tempnam("/tmp", "");
+        unlink($this->_dir);
+        mkdir($this->_dir);
+    }
+
+    function __set($key, $value) 
+    {
+        $data = & $this->_data[$key];
+
+        if (!isset($data)) {
+            $data = array();
+        }
+
+        if ($data === true) {
+            $tmp   = & $this->__get($key);
+            $tmp[] = $value;
+            $k = md5($key);
+            file_put_contents($this->_dir."/$k", serialize($tmp));
+            $data = true;
+            return;
+        }
+
+        $data[] = $value;
+
+        if ((memory_get_usage()/(1024*1024)) > 36) {
+            $k = md5($key);
+            file_put_contents($this->_dir."/$k", serialize($data));
+            $data = true;
+        }
+
+    }
+
+    function & __get($key)
+    {
+        if ($this->_data[$key] === true) {
+            $k     = md5($key);
+            $value = unserialize(file_get_contents($this->_dir."/$k"));
+            return $value;
+        }
+        return $this->_data[$key];
+    }
+
+    function getKeys()
+    {
+        return array_keys($this->_data);
+    }
+
+    function __destruct()
+    {
+        foreach (glob($this->_dir."/*") as $file) {
+            unlink($file);
+        }
+        rmdir($this->_dir);
+    }
+}
 
 final class Hadoop
 {
@@ -8,7 +70,7 @@ final class Hadoop
     private $_jar = "contrib/streaming/hadoop-0.18.3-streaming.jar";
     private $_tmp;
     private $_id;
-    private $_reduce = 4;
+    private $_reduce = 1;
 
 
     function __construct()
@@ -98,6 +160,11 @@ final class Hadoop
                 basename($this->_getFileName("reduce")), $this->_reduce,
                 $this->_getFileName("map"), $this->_getFileName("reduce"),__FILE__
             );
+        /* */
+        $includes = get_included_files();
+        for ($i=2; $i < count($includes); $i++) {
+            $cmd .= " -file ".$includes[$i];
+        }
         echo "$cmd\n\n\n";
         return $cmd;
     }
@@ -129,22 +196,24 @@ abstract class Job
 
     final function RunReduce()
     {
-        $values = array();
-
+        $values = new parray();
+ 
         while (($line = fgets(STDIN)) !== false) {
+            $key = $value = null;
             list($key, $value) = explode("\t", $line, 2);
-            if (!isset($values[$key])) {
-                $values[$key] = array();
-            }
-            $values[$key][] = substr($value,0,strlen($value) -1);
-        }
-
-        foreach (array_keys($values) as $id) {
-            if (count($values[$id]) == 0) {
+            if ($key===null || $value===null) {
                 continue;
             }
-            $this->reduce($id, $values[$id]);
+            $values->$key = substr($value,0,strlen($value) -1);
         }
+
+        foreach ($values->getKeys() as $id) {
+            if (count($values->$id) == 0) {
+                continue;
+            }
+            $this->reduce($id, $values->$id);
+        }
+        $values = null;
     }
 
     abstract protected function map($value);
