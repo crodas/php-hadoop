@@ -1,15 +1,17 @@
 <?php
-include("hadoop.php");
+include("src/hadoop.php");
 
 
-class InitCluster extends Job
+final class PrepareCluster extends Job
 {
-    function __construct() {
+    function __construct()
+    {
         define("MIN_WORD_LENGTH", 3);
         define("MIN_WORD_FREQ", 3);
     }
 
-    function map($value) {
+    function map($value)
+    {
         if (strpos($value,"||") == 0) {
             return;
         }
@@ -35,12 +37,14 @@ class InitCluster extends Job
         return pow($number, 2);
     }
 
-    final private function _getnumber($value) {
+    final private function _getnumber($value)
+    {
         list(, $val) = explode(",", $value);
         return $val;
     }
 
-    function reduce($key, $values) {
+    function reduce($key, $values)
+    {
         if (count($values) < MIN_WORD_FREQ) {
             return;
         }
@@ -52,17 +56,49 @@ class InitCluster extends Job
         $tmp['seq'] = array_sum(array_map(array(&$this, "_pearsonpow"), $val));
         $tmp['den'] = $tmp['seq'] - pow($tmp['sum'], 2);
 
-
         $this->Emit($key, implode("|", $tmp) ."|".implode(":", $values));
+    }
+}
+
+final class InitCluster extends Job
+{
+    function __construct()
+    {
+        global $i;
+        $i = 0;
+        define("KMEANS", 1000);
+
+    }
+
+    function map($value)
+    {
+        if (rand(1, 10) == 1) {
+            list($url,$value) = explode("\t", $value);
+            $this->EmitIntermediate($url, $value);
+        }
+    }
+
+    function reduce($key, $value)
+    {
+        global $i;
+        if ($i++ > KMEANS) {
+            $this->Emit($key, $value[0]);
+        }
     }
 }
 
 $hadoop = new Hadoop;
 /* create an invert index for fast computation */
 $hadoop->setHome("/home/crodas/hadoop/hadoop-0.18.3");
-$hadoop->setJob(new InitCluster);
 $hadoop->setInput("noticias/*.txt");
 $hadoop->setOutput("noticias/init");
+$hadoop->setJob(new PrepareCluster);
+//$hadoop->Run();
+
+
+$hadoop->setInput("noticias/init");
+$hadoop->setOutput("noticias/step1");
+$hadoop->setJob(new InitCluster);
 $hadoop->Run();
 
 ?>
