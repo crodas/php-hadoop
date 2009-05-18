@@ -15,7 +15,7 @@ class InitCluster extends Job
         }
         list($url, $text) = explode("||", $value);
         $words = array();
-        foreach(preg_split("/[^a-zA-Z]/", $text,0,PREG_SPLIT_NO_EMPTY) as $word) {
+        foreach(preg_split("/[^a-zαινσϊόρ]/i", $text,0,PREG_SPLIT_NO_EMPTY) as $word) {
             $word = strtolower($word);
             if (strlen($word) < MIN_WORD_LENGTH) {
                 continue;
@@ -30,11 +30,30 @@ class InitCluster extends Job
         }
     }
 
-    function reduce($key, &$values) {
+    final private function _pearsonPow($number)
+    {
+        return pow($number, 2);
+    }
+
+    final private function _getnumber($value) {
+        list(, $val) = explode(",", $value);
+        return $val;
+    }
+
+    function reduce($key, $values) {
         if (count($values) < MIN_WORD_FREQ) {
             return;
         }
-        $this->Emit($key, implode(";", $values));
+
+        $val = array_map(array(&$this,"_getnumber"), $values);
+        $tmp = array();
+
+        $tmp['sum'] = array_sum($val);
+        $tmp['seq'] = array_sum(array_map(array(&$this, "_pearsonpow"), $val));
+        $tmp['den'] = $tmp['seq'] - pow($tmp['sum'], 2);
+
+
+        $this->Emit($key, implode("|", $tmp) ."|".implode(":", $values));
     }
 }
 

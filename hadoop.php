@@ -1,4 +1,7 @@
 <?php
+
+ini_set("memory_limit", "100M");
+
 final class PArray {
     private $_dir;
     private $_data = array();
@@ -10,40 +13,62 @@ final class PArray {
     function __construct()
     {
         $this->_dir = tempnam("/tmp", "").".db";
-        $this->_db  = dba_open($this->_dir, "c", "db4");
+        $this->_db  = dba_open($this->_dir, "c","db4");
     }
 
     function __set($key, $value) 
     {
-        $data = & $this->_data[$key];
+        $data  = & $this->_data[$key];
+        $count = & $this->_count;
+        $disk  = & $this->_disk;
 
         if (!isset($data)) {
             $data = array();
-            $this->_count++;
+            $count++;
         }
 
         if ($data === true) {
-            $data  = & $this->__get($key);
+            $data = unserialize(dba_fetch($key, $this->_db));
+            $disk--;
         }
-
         $data[] = $value;
 
-        $count = & $this->_count;
-        $disk  = & $this->_disk;
-        while ((memory_get_usage()/(1024*1024)) > 36) {
-            if ($count < $disk * 1.1) {
+        /* freeing memory and dump it to disk  {{{ */
+        $limit = 70; /* 38 megabytes */
+        if ((memory_get_usage()/(1024*1024)) < $limit ) {
+            return; /* nothing to free-up, so return */
+        }
+        $limit -= 35; /* dump 5 megabytes to disk */
+        $wdata  = & $this->_data;
+        end($wdata);
+        fwrite(STDERR, "Freeing ".ceil(memory_get_usage()/(1024*1024))."M ".time()."\n");
+        $i = $count;
+        while ((memory_get_usage()/(1024*1024)) > $limit  && current($wdata)) {
+            if (--$i == 0) {
                 break;
             }
-            if (!dba_insert($key, serialize($data), $this->_db)) {
-                dba_replace($key, serialize($data), $this->_db);
+            $xkey  = key($wdata);
+            $xdata = current($wdata);
+            if (!is_array($xdata)) {
+                prev($wdata);
+                continue;
             }
-            $data = true;
+            $serialize = serialize( $xdata );
+            if (!dba_insert($xkey, $serialize, $this->_db)) {
+                dba_replace($xkey, $serialize, $this->_db);
+            }
+            unset($wdata[$xkey]);
+            unset($xdata);
+            $wdata[ $xkey ] = true;
+            prev($wdata);
             $disk++;
         }
-
+        unset($xdata);
+        fwrite(STDERR, "\tFreed ".ceil(memory_get_usage()/(1024*1024))."M ".time()."\n");
+        /* }}} */
     }
 
-    function & __get($key)
+    function __get($key)
     {
         if ($this->_data[$key] === true) {
             $value = unserialize(dba_fetch($key, $this->_db));
@@ -54,6 +79,7 @@ final class PArray {
 
     function getKeys()
     {
+        fwrite(STDERR, "Getting values\n");
         return array_keys($this->_data);
     }
 
@@ -77,7 +103,7 @@ final class Hadoop
     private $_jar = "contrib/streaming/hadoop-0.18.3-streaming.jar";
     private $_tmp;
     private $_id;
-    private $_reduce = 1;
+    private $_reduce = 4;
 
 
     function __construct()
@@ -224,7 +250,7 @@ abstract class Job
     }
 
     abstract protected function map($value);
-    abstract protected function reduce($key, &$iterable);
+    abstract protected function reduce($key, $iterable);
 }
 
 ?>
