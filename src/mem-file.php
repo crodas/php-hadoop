@@ -7,36 +7,28 @@ final class PArray {
     private $_count = 0;
     private $_disk  = 0;
     private $_db;
+    private $_limit = 70;
+    private $_threshold = 40;
 
     function __construct()
     {
-        $this->_dir = tempnam("/tmp", "").".db";
-        $this->_db  = dba_open($this->_dir, "c","db4");
+        $file = tempnam("/tmp", "");
+        unlink($file);
+        $this->_dir = "{$file}.db";
+        $this->_db  = dba_open($this->_dir, "c","db4") or die("Unable to run reducer, please ensure you have dba + db4");
     }
 
-    function __set($key, $value) 
+    private function _swap()
     {
-        $data  = & $this->_data[$key];
         $count = & $this->_count;
         $disk  = & $this->_disk;
 
-        if (!isset($data)) {
-            $data = array();
-            $count++;
-        }
-
-        if ($data === true) {
-            $data = unserialize(dba_fetch($key, $this->_db));
-            $disk--;
-        }
-        $data[] = $value;
-
         /* freeing memory and dump it to disk  {{{ */
-        $limit = 70; /* 38 megabytes */
-        if ((memory_get_usage()/(1024*1024)) < $limit ) {
+        $limit = $this->_limit;
+        if ((memory_get_usage()/(1024*1024)) < $limit) {
             return; /* nothing to free-up, so return */
         }
-        $limit -= 35; /* dump 5 megabytes to disk */
+        $limit -= $this->_threshold; /* dump X megabytes to disk */
         $wdata  = & $this->_data;
         end($wdata);
         fwrite(STDERR, "Freeing ".ceil(memory_get_usage()/(1024*1024))."M ".time()."\n");
@@ -66,9 +58,28 @@ final class PArray {
         /* }}} */
     }
 
+    function __set($key, $value) 
+    {
+        $data  = & $this->_data[$key];
+        $count = & $this->_count;
+
+        if (!isset($data)) {
+            $data = array();
+            $count++;
+        }
+
+        if ($data === true) {
+            $data = unserialize(dba_fetch($key, $this->_db));
+        }
+        $data[] = $value;
+        $this->_swap();
+    }
+
     function __get($key)
     {
         if ($this->_data[$key] === true) {
+            $this->_swap();
+            $this->_disk--;
             $value = unserialize(dba_fetch($key, $this->_db));
             return $value;
         }

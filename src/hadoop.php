@@ -29,6 +29,16 @@ final class Hadoop
         include(dirname(__FILE__)."/$file");
     }
 
+
+    function setNumberOfReduces($number)
+    {
+        if ((int)$number < 1) {
+            return false;
+        }
+        $this->_reduce = $number;
+    }
+
+
     function Run()
     {
         $cmd = $this->_getCmd();

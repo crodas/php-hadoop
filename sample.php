@@ -37,10 +37,13 @@ final class PrepareCluster extends Job
         return pow($number, 2);
     }
 
-    final private function _getnumber($value)
+    final private function _getArray(&$arr, $values)
     {
-        list(, $val) = explode(",", $value);
-        return $val;
+        foreach ($values as $val) {
+            list($k, $v) = explode(",", $val, 2);
+            $arr[ $k ] = $v;
+        }
+        ksort($arr);
     }
 
     function reduce($key, $values)
@@ -49,14 +52,21 @@ final class PrepareCluster extends Job
             return;
         }
 
-        $val = array_map(array(&$this,"_getnumber"), $values);
+        $val = array();
+        $this->_getArray($val, $values);
         $tmp = array();
 
+        /* some calculations */
         $tmp['sum'] = array_sum($val);
         $tmp['seq'] = array_sum(array_map(array(&$this, "_pearsonpow"), $val));
-        $tmp['den'] = $tmp['seq'] - pow($tmp['sum'], 2);
+        $tmp['den'] = $tmp['seq'] - pow($tmp['sum'], 2) / 10000; 
 
-        $this->Emit($key, implode("|", $tmp) ."|".implode(":", $values));
+        $values = '';
+        foreach ($val as $word => $count) {
+            $values .= "$word,$count:";
+        }
+
+        $this->Emit($key, implode("|", $tmp) ."|".$values);
     }
 }
 
@@ -64,9 +74,7 @@ final class InitCluster extends Job
 {
     function __construct()
     {
-        global $i;
-        $i = 0;
-        define("KMEANS", 1000);
+        define("KMEANS", 10000);
 
     }
 
@@ -80,25 +88,51 @@ final class InitCluster extends Job
 
     function reduce($key, $value)
     {
-        global $i;
-        if ($i++ > KMEANS) {
+        static $i=0;
+        if ($i++ < KMEANS) {
             $this->Emit($key, $value[0]);
         }
     }
 }
 
+final class ClusterIterator extends Job
+{
+    function  __construct() 
+    {
+    }
+
+    function map($line)
+    {
+    }
+    
+    function reduce($key, $value)
+    {
+    }
+}
+
+
 $hadoop = new Hadoop;
 /* create an invert index for fast computation */
 $hadoop->setHome("/home/crodas/hadoop/hadoop-0.18.3");
-$hadoop->setInput("noticias/*.txt");
+$hadoop->setInput("noticias");
 $hadoop->setOutput("noticias/init");
 $hadoop->setJob(new PrepareCluster);
-//$hadoop->Run();
+$hadoop->setNumberOfReduces(4);
+$hadoop->Run();
 
 
 $hadoop->setInput("noticias/init");
 $hadoop->setOutput("noticias/step1");
 $hadoop->setJob(new InitCluster);
+$hadoop->setNumberOfReduces(1);
 $hadoop->Run();
+die();
 
+for($i=1; ;$i++) {
+    $hadoop->setInput("noticias/init");
+    $hadoop->setOutput("noticias/ite-$i");
+    $hadoop->setNumberOfReduces(5);
+    $hadoop->setJob(new ClusterIterator);
+    $hadoop->Run();
+}
 ?>
