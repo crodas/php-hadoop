@@ -11,7 +11,7 @@ final class Hadoop
 {
     private $_ipath;
     private $_opath;
-    private $_path;
+    private static $_path;
     private $_jar = "contrib/streaming/hadoop-0.18.3-streaming.jar";
     private $_tmp;
     private $_id;
@@ -29,6 +29,18 @@ final class Hadoop
         include(dirname(__FILE__)."/$file");
     }
 
+    static function getFile($file)
+    {
+        $home = self::$_path;
+        $tmp = tmpfile();
+        $p = popen("${home}/bin/hadoop fs -cat ${file}", "r");
+        while ($r = fread($p,1024)) {
+            fwrite($tmp, $r);
+        }
+        fclose($p);
+        rewind($tmp);
+        return $tmp;
+    }
 
     function setNumberOfReduces($number)
     {
@@ -51,7 +63,7 @@ final class Hadoop
         @unlink($this->_getFileName("reduce"));
     }
 
-    function setHome($file)
+    public static function setHome($file)
     {
         if (!is_dir($file)) {
             return False;
@@ -63,7 +75,7 @@ final class Hadoop
         if ($file[strlen($file)-1] != "/") {
             $file .= "/";
         }
-        $this->_path = $file;
+        self::$_path = $file;
         return True;
     }
 
@@ -115,7 +127,7 @@ final class Hadoop
         $jarpath = $this->_jar;
         $ipath   = $this->_ipath;
         $opath   = $this->_opath;
-        $path    = $this->_path;
+        $path    = self::$_path;
 
         $cmd = sprintf("%sbin/hadoop jar %s -input %s -output %s -mapper %s -reducer %s  -jobconf mapred.reduce.tasks=%d -file %s -file %s -file %s", 
                 $path, $path.$jarpath, $ipath, $opath, 

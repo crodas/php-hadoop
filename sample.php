@@ -4,10 +4,11 @@ include("src/hadoop.php");
 
 final class PrepareCluster extends Job
 {
-    function __construct()
+    function __hadoop_init()
     {
         define("MIN_WORD_LENGTH", 3);
         define("MIN_WORD_FREQ", 3);
+        define("WORD_MATRIX_X", 20000);
     }
 
     function map($value)
@@ -59,7 +60,7 @@ final class PrepareCluster extends Job
         /* some calculations */
         $tmp['sum'] = array_sum($val);
         $tmp['seq'] = array_sum(array_map(array(&$this, "_pearsonpow"), $val));
-        $tmp['den'] = $tmp['seq'] - pow($tmp['sum'], 2) / 10000; 
+        $tmp['den'] = $tmp['seq'] - pow($tmp['sum'], 2) / WORD_MATRIX_X; 
 
         $values = '';
         foreach ($val as $word => $count) {
@@ -72,9 +73,9 @@ final class PrepareCluster extends Job
 
 final class InitCluster extends Job
 {
-    function __construct()
+    function __hadoop_init()
     {
-        define("KMEANS", 10000);
+        define("KMEANS", 5000);
 
     }
 
@@ -90,49 +91,127 @@ final class InitCluster extends Job
     {
         static $i=0;
         if ($i++ < KMEANS) {
-            $this->Emit($key, $value[0]);
+            $this->Emit($i, $value[0]);
         }
     }
 }
 
 final class ClusterIterator extends Job
 {
-    function  __construct() 
+    private $_centroids;
+    private $_centroids_id;
+    function  __hadoop_init()
     {
+        hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
+        define("WORD_MATRIX_X", 20000);
+        $centroids = array();
+    
+        $fp = Hadoop::getFile("noticias/step1/part-00000");
+        while ($r = fgets($fp)) {
+            list($id, $content) = explode("\t", $r, 2);
+            $centroids[$id] = $this->_getObject($content);
+        }
+        $this->_centroids    = & $centroids;
+        $this->_centroids_id = array_keys($centroids);
+        fclose($fp);
+    }
+
+    private function _getObject($line)
+    {
+        $obj = new stdClass;
+
+        list($s, $seq, $den, $extra) = explode("|", $line, 4);
+        $obj->sum   = $s;
+        $obj->seq   = $seq;
+        $obj->den   = $den;
+        $obj->words = & $words;
+        $words      = array();
+        foreach (explode(":", $extra) as $word) {
+            if (trim($word) == "") {
+                continue;
+            }
+            list($w, $c) = explode(",", $word, 2);
+            $words[$w] = $c;
+        }
+
+        return $obj;
+    }
+
+    private function _pearson($obj, &$centroid)
+    {
+        $pSum = 0;
+
+        $w  =  & $centroids->words;
+        foreach ($obj->words as $word=>$cnt) {
+            if (isset($w[$word])) {
+                $pSum += $cnt * $w[$word];
+            }
+        }
+
+        $num = $pSum - ($obj->sum * $centroid->sum / WORD_MATRIX_X);
+        $den = sqrt($obj->den * $centroid->den);
+        if ($den == 0) {
+            return 0;
+        }
+        return 1-($num/$den);
     }
 
     function map($line)
     {
+        $centroids    = & $this->_centroids;
+        $centroids_id = & $this->_centroids_id;
+
+        list($key, $content) = explode("\t", $line, 2);
+        $word   = $this->_getObject($content);
+        $bmatch = 2; 
+        $best   = -1;
+
+        foreach ($centroids_id as $id) {
+            $dist = $this->_pearson($word, $centroids[$id]);
+            if ($dist < $bmatch) {
+                $bmatch = $dist;
+                $best   = $id;
+            }
+        }
+
+            fwrite(STDERR, "$key $best $bmatch\n");
+        if ($bmatch < 0.6) {
+            fwrite(STDERR, "$key $best\n");
+            $this->EmitIntermediate($key, $best);
+        }
+
+
     }
     
     function reduce($key, $value)
     {
+        $this->Emit($key, $value[0]);
     }
 }
 
+hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
 
 $hadoop = new Hadoop;
 /* create an invert index for fast computation */
-$hadoop->setHome("/home/crodas/hadoop/hadoop-0.18.3");
 $hadoop->setInput("noticias");
 $hadoop->setOutput("noticias/init");
 $hadoop->setJob(new PrepareCluster);
 $hadoop->setNumberOfReduces(4);
-$hadoop->Run();
+//$hadoop->Run();
 
 
 $hadoop->setInput("noticias/init");
 $hadoop->setOutput("noticias/step1");
 $hadoop->setJob(new InitCluster);
 $hadoop->setNumberOfReduces(1);
-$hadoop->Run();
-die();
+//$hadoop->Run();
 
 for($i=1; ;$i++) {
     $hadoop->setInput("noticias/init");
     $hadoop->setOutput("noticias/ite-$i");
-    $hadoop->setNumberOfReduces(5);
+    $hadoop->setNumberOfReduces(1);
     $hadoop->setJob(new ClusterIterator);
     $hadoop->Run();
+    break;
 }
 ?>

@@ -14,6 +14,7 @@ abstract class Job
 
     final function RunMap()
     {
+        $this->__hadoop_init();
         while (($line = fgets(STDIN)) !== false) {
             $line = substr($line, 0, strlen($line)-1);
             if (strlen($line) == 0) {
@@ -26,6 +27,7 @@ abstract class Job
 
     final function RunReduce()
     {
+        $this->__hadoop_init();
         $values = new parray();
  
         while (($line = fgets(STDIN)) !== false) {
