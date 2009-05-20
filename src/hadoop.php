@@ -93,6 +93,12 @@ final class Hadoop
     {
         $map    = file_get_contents(dirname(__FILE__)."/map.php");
         $reduce = file_get_contents(dirname(__FILE__)."/reduce.php");
+        $includ = '';
+        $files  = get_included_files();
+
+        for ($i=1; $i < count($files); $i++) {
+            $includ .= "require_once('".basename($files[$i])."');\n";
+        }
 
         /* extract the class code */
         $info = new ReflectionClass($job);
@@ -104,6 +110,7 @@ final class Hadoop
 
         /* save the map */
         $map = str_replace("/*name*/", $info->getName(), $map);
+        $map = str_replace("/*include*/", $includ, $map);
         if (array_search($info->getFileName(), get_included_files()) === 0) {
             $map = str_replace("/*class*/", $code, $map);
         }
@@ -112,7 +119,10 @@ final class Hadoop
 
         /* save the reduce */
         $reduce = str_replace("/*name*/", $info->getName(), $reduce);
-        $reduce = str_replace("/*class*/", $code, $reduce);
+        $reduce = str_replace("/*include*/", $includ, $reduce);
+        if (array_search($info->getFileName(), get_included_files()) === 0) {
+            $reduce = str_replace("/*class*/", $code, $reduce);
+        }
         file_put_contents($this->_getFileName("reduce"), $reduce);
         chmod($this->_getFileName("reduce"),0777);
     }

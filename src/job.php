@@ -2,13 +2,19 @@
 
 abstract class Job
 {
-    final function EmitIntermediate($key, $value)
+    final function EmitIntermediate($key, &$value)
     {
+        if (!is_scalar($value)) {
+            $value = "\t\t\t".serialize($value);
+        }
         printf("%s\t%s\n",$key, $value);
     }
 
-    final function Emit($key, $value)
+    final function Emit($key, &$value)
     {
+        if (!is_scalar($value)) {
+            $value = "\t\t\t".serialize($value);
+        }
         printf("%s\t%s\n",$key, $value);
     }
 
@@ -20,9 +26,22 @@ abstract class Job
             if (strlen($line) == 0) {
                 continue;
             }
-            $this->map($line);
+            $input = $this->map_parser($line);
+            if (count($input) == 1) {
+                $input[1] = $input[0];
+                $input[0] = null;
+            }
+            if (substr($input[1], 0,3) === "\t\t\t") {
+                $input[1] = unserialize(substr($input[1],3));
+            }
+            $this->map($input[0], $input[1]);
         }
 
+    }
+
+    protected function map_parser($line)
+    {
+        return explode("\t", $line, 2);
     }
 
     final function RunReduce()
@@ -36,20 +55,29 @@ abstract class Job
             if ($key===null || $value===null) {
                 continue;
             }
-            $values->$key = substr($value,0,strlen($value) -1);
+            
+            if (substr($value, 0,3) === "\t\t\t") {
+                $value = unserialize(substr($value,3));
+            } else {
+                $value = substr($value,0,strlen($value) -1);
+            }
+            $values->add($key, $value);
         }
 
         foreach ($values->getKeys() as $id) {
-            if (count($values->$id) == 0) {
+            $val = & $values->get($id);
+            if (count($val) == 0) {
                 continue;
             }
-            $this->reduce($id, $values->$id);
+            $this->reduce($id, $val);
         }
         $values = null;
     }
 
-    abstract protected function map($value);
-    abstract protected function reduce($key, $iterable);
+    function __hadoop_init() {}
+
+    abstract protected function map($key, &$value);
+    abstract protected function reduce($key, &$iterable);
 }
 
 ?>

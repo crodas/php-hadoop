@@ -1,6 +1,6 @@
 #!/usr/bin/php
 <?
-include("hadoop.php");
+/*include*/
 
 /*class*/
 

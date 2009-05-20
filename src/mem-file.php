@@ -58,7 +58,7 @@ final class PArray {
         /* }}} */
     }
 
-    function __set($key, $value) 
+    function add($key, &$value) 
     {
         $data  = & $this->_data[$key];
         $count = & $this->_count;
@@ -75,7 +75,7 @@ final class PArray {
         $this->_swap();
     }
 
-    function __get($key)
+    function & get($key)
     {
         if ($this->_data[$key] === true) {
             $this->_swap();
