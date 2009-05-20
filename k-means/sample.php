@@ -17,14 +17,13 @@ $hadoop->setInput("noticias/*.txt");
 $hadoop->setOutput("noticias/init");
 $hadoop->setJob(new PrepareCluster);
 $hadoop->setNumberOfReduces(2);
-$hadoop->Run();
+//$hadoop->Run();
 
 $hadoop->setInput("noticias/init");
 $hadoop->setOutput("noticias/centroids");
 $hadoop->setJob(new InitCluster);
 $hadoop->setNumberOfReduces(1);
-$hadoop->Run();
-exit();
+//$hadoop->Run();
 
 for($i=1; ;$i++) {
     $hadoop->setInput("noticias/init");
