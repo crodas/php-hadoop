@@ -25,7 +25,7 @@ final class PArray {
 
         /* freeing memory and dump it to disk  {{{ */
         $limit = $this->_limit;
-        if ((memory_get_usage()/(1024*1024)) < $limit) {
+        if ((memory_get_usage()/(1024*1024)) <= $limit) {
             return; /* nothing to free-up, so return */
         }
         $limit -= $this->_threshold; /* dump X megabytes to disk */
@@ -33,27 +33,29 @@ final class PArray {
         end($wdata);
         fwrite(STDERR, "Freeing ".ceil(memory_get_usage()/(1024*1024))."M ".time()."\n");
         $i = $count;
-        while ((memory_get_usage()/(1024*1024)) > $limit  && current($wdata)) {
-            if (--$i == 0) {
+        while ((memory_get_usage()/(1024*1024)) >= $limit)  {
+            if (--$i < 0) {
                 break;
             }
-            $xkey  = key($wdata);
-            $xdata = current($wdata);
+            $xdata  = current($wdata);
             if (!is_array($xdata)) {
                 prev($wdata);
                 continue;
             }
-            $serialize = serialize( $xdata );
-            if (!dba_insert($xkey, $serialize, $this->_db)) {
-                dba_replace($xkey, $serialize, $this->_db);
+            $xkey   = key($wdata);
+            fwrite(STDERR, "\t\tAttempt to free $xkey\n");
+            $serial = serialize( $xdata );
+            if (!dba_insert($xkey, $serial, $this->_db)) {
+                dba_replace($xkey, $serial, $this->_db);
             }
             unset($wdata[$xkey]);
             unset($xdata);
+            unset($serial);
             $wdata[ $xkey ] = true;
             prev($wdata);
             $disk++;
         }
-        unset($xdata);
+        dba_sync($this->_db);
         fwrite(STDERR, "\tFreed ".ceil(memory_get_usage()/(1024*1024))."M ".time()."\n");
         /* }}} */
     }

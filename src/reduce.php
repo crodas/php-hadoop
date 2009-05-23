@@ -3,6 +3,7 @@
 /*include*/
 
 /*class*/
+hadoop::initReducer();
 
 $map = new /*name*/;
 $map->RunReduce();

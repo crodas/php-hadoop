@@ -1,55 +1,30 @@
 <?php
 
-final class ClusterIterator extends Job
+function Array_Merge_ex(&$array, $array1)
 {
-    private $_centroids;
-    private $_centroids_id;
-
-    function  __hadoop_init()
-    {
-        hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
-        $centroids = array();
-    
-        $fp = Hadoop::getFile("noticias/centroids/part-00000");
-        while ($r = fgets($fp)) {
-            list($id, $content) = explode("\t", $r, 2);
-            $centroids[$id]       = unserialize(trim($content));
-            $centroids[$id]->keys = array_keys($centroids[$id]->words);
+    foreach ($array1 as $key => $value) {
+        if (!isset($array[$key])) {
+            $array[$key] = 0;
         }
-        $this->_centroids    = & $centroids;
-        $this->_centroids_id = array_keys($centroids);
-        fclose($fp);
+        $array[$key] += $value;
     }
+}
 
-    private function _getObject($line)
-    {
-        $obj = new stdClass;
+abstract class KmeansBase extends Job
+{
+    protected $centroids;
+    protected $centroids_id;
+    protected $threshold = 0.6;
 
-        list($s, $seq, $den, $extra) = explode("|", $line, 4);
-        $obj->sum   = $s;
-        $obj->seq   = $seq;
-        $obj->den   = $den;
-        $obj->words = & $words;
-        $words      = array();
-        foreach (explode(":", $extra) as $word) {
-            if (trim($word) == "") {
-                continue;
-            }
-            list($w, $c) = explode(",", $word, 2);
-            $words[$w] = $c;
-        }
-
-        return $obj;
-    }
-
-    private function _pearson(stdClass &$obj, stdClass &$centroid)
+    protected function pearson(stdClass &$obj, stdClass &$centroid)
     {
 
         $x    = & $obj->words;
         $y    = & $centroid->words;
+        $keys = & $centroid->keys;
         $pSum = 0;
         
-        foreach ($centroid->keys as $word) {
+        foreach ($keys as $word) {
             if (isset($x[$word])) {
                 $pSum += $x[$word] * $y[$word];
             }
@@ -65,30 +40,141 @@ final class ClusterIterator extends Job
 
     function map($key, &$value)
     {
-        $centroids    = & $this->_centroids;
-        $centroids_id = & $this->_centroids_id;
+        $centroids    = & $this->centroids;
+        $centroids_id = & $this->centroids_id;
+        $threshold    = $this->threshold;
 
         $bmatch = 4; 
         $best   = -1;
 
         foreach ($centroids_id as $id) {
-            $dist = $this->_pearson($value, $centroids[$id]);
+            $dist = $this->pearson($value, $centroids[$id]);
             if ($dist < $bmatch) {
                 $bmatch = $dist;
                 $best   = $id;
             }
         }
 
-        if ($bmatch < 0.6) {
+        if ($bmatch < $threshold) {
             $value->id = $key;
             $this->EmitIntermediate($best, $value);
         }
     }
     
-    function reduce($key, &$value)
+    function reduce($key, &$values)
     {
-        $this->Emit($key, $value);
+        if (count($values) >= 1) {
+            $words = array();
+            $len   = count($values);
+            foreach ($values as $value) {
+                array_merge_ex($words, $value->words);
+            }
+            
+            foreach ($words as $word => &$count) {
+                $words[$word] = ceil($words[$word]/ $len);
+                if ($words[$word] <= 0) {
+                    unset($words[$word]);
+                }
+            }
+            $val        = InitKMeans::initNode($words);
+            $val->items = & $values;
+            $this->Emit($key, $val);
+        }
+    }
+
+    private function _getItemId($val)
+    {
+        return $val->id;
     }
 }
 
+final class Centroids extends KmeansBase
+{
+    function  __hadoop_init()
+    {
+        $this->threshold = 2;
+        hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
+        $centroids = array();
+    
+        $fp = Hadoop::getFile("noticias/centroids/part-00000");
+        $i=0;
+        while ($r = fgets($fp)) {
+            if (rand(0,5) == 5) {
+                list($id, $content) = explode("\t", $r, 2);
+                $centroids[$i]       = unserialize(trim($content));
+                $centroids[$i]->keys = array_keys($centroids[$i]->words);
+                $i++;
+            }
+        }
+
+        $this->centroids    = & $centroids;
+        $this->centroids_id = array_keys($centroids);
+        fclose($fp);
+    }
+
+
+}
+
+final class kmeansIterator extends KmeansBase
+{
+    function  __hadoop_init()
+    {
+        hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
+        $centroids = array();
+    
+        $fp = Hadoop::getFile("noticias/ite-1/centroids/part-00000");
+        while ($r = fgets($fp)) {
+            list($id, $content) = explode("\t", $r, 2);
+            $centroids[$id]       = unserialize(trim($content));
+            $centroids[$id]->keys = array_keys($centroids[$id]->words);
+
+            $items    = & $centroids[$id]->items;
+            foreach (array_keys($items) as $i) {
+                $items[$i]->keys = array_keys($items[$i]->words);
+            }
+        }
+        $this->centroids    = & $centroids;
+        $this->centroids_id = array_keys($centroids);
+        fclose($fp);
+    }
+
+    function map($key, &$value)
+    {
+        $centroids    = & $this->centroids;
+        $centroids_id = & $this->centroids_id;
+        $threshold    = $this->threshold;
+
+        $bmatch = 4; 
+        $best   = -1;
+
+        /* find the great-centroid where it might belong */
+        foreach ($centroids_id as $id) {
+            $dist = $this->pearson($value, $centroids[$id]);
+            if ($dist < $bmatch) {
+                $bmatch = $dist;
+                $best   = $id;
+            }
+        }
+
+        /* find the centroid inside the great-centroid where it might belong */
+        $_center = & $centroids[$best]->items;
+        $len     = count($_center);
+        $bmatch  = 4; 
+        $best    = -1;
+        for ($i=0; $i < $len; $i++) {
+            $dist = $this->pearson($value, $_center[$i]);
+            if ($dist < $bmatch) {
+                $bmatch = $dist;
+                $best   = $i;
+            }
+        }
+
+        if ($bmatch < $threshold) {
+            $value->id = $key;
+            $this->EmitIntermediate($best, $value);
+        }
+    }
+
+
+}
 ?>

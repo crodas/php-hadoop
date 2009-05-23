@@ -1,6 +1,6 @@
 <?php
 
-final class PrepareCluster extends Job
+final class InitKMeans extends Job
 {
     
     function map_parser($line) {
@@ -23,7 +23,7 @@ final class PrepareCluster extends Job
         $this->EmitIntermediate($key, $words);
     }
 
-    final private function _pearsonPow($number)
+    final static private function _pearsonPow($number)
     {
         return pow($number, 2);
     }
@@ -34,17 +34,22 @@ final class PrepareCluster extends Job
         if (count($values) < MIN_WORD_FREQ) {
             return;
         }
+
+        $this->Emit($key, self::initNode($values) );
+    }
+
+    public static function initNode(&$values)
+    {
         $tmp = new STDClass;
 
         /* some calculations */
         $tmp->sum = array_sum($values);
-        $tmp->seq = array_sum(array_map(array(&$this, "_pearsonpow"), $values));
+        $tmp->seq = array_sum(array_map(array("initKMeans", "_pearsonpow"), $values));
         $tmp->den = $tmp->seq - pow($tmp->sum, 2) / WORD_MATRIX_X; 
 
         ksort($values);
         $tmp->words = & $values;
-
-        $this->Emit($key, $tmp);
+        return $tmp;
     }
 }
 
