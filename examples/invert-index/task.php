@@ -1,17 +1,17 @@
 <?php
 
+/**
+ *  Invert Index
+ *
+ *  This class contains an Invert Index.
+ */
 final class InvertIndex extends Job
 {
     function __config()
     {
         $this->setInput("noticias/*");
         $this->setOutput("index");
-        $this->setReducers(2);
-    }
-
-    function mapParser($line)
-    {
-        return explode("||", $line, 2);
+        $this->setReducers(1);
     }
 
     function map($key, &$value)

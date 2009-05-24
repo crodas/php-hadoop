@@ -1,25 +1,43 @@
 <?php
 
-
+/**
+ *  Job
+ *
+ *  
+ */
 abstract class Job extends Hadoop
 {
-    const SERIALIZED="/serial/";
-
+    /**
+     *  
+     *
+     */
     final function EmitIntermediate($key, &$value)
     {
-        $val = self::SERIALIZED.serialize($value);
+        $val = serialize($value);
         echo "$key\t$val\n";
     }
 
     final function Emit($key, &$value)
     {
-        $val = self::SERIALIZED.serialize($value);
+        $val = serialize($value);
         echo "$key\t$val\n";
+    }
+
+    final function unserialize(&$data)
+    {
+        static $serfalse = false;
+
+        if ($serfalse===false) {
+            $serfalse = serialize(false);
+        }
+
+        if ($data===$serfalse || ($ret=@unserialize($data)) !== false) {
+            $data = $ret;
+        }
     }
 
     final function runMap()
     {
-        $len  = strlen(self::SERIALIZED);
         $this->__init();
         while (($line = fgets(STDIN)) !== false) {
             $line = substr($line, 0, strlen($line)-1);
@@ -30,10 +48,8 @@ abstract class Job extends Hadoop
             if (count($input) == 1) {
                 $input[1] = $input[0];
                 $input[0] = null;
-            }
-            if (strpos($input[1],self::SERIALIZED) === 0) {
-                $input[1] = unserialize(substr($input[1], $len));
-            }
+            } 
+            $this->unserialize($input[1]);
             $this->map($input[0], $input[1]);
         }
 
@@ -48,7 +64,6 @@ abstract class Job extends Hadoop
     {
         $this->__init();
         $values  = array();new parray();
-        $len     = strlen(self::SERIALIZED);
         $lastkey = null;
  
         while (($line = fgets(STDIN)) !== false) {
@@ -63,9 +78,7 @@ abstract class Job extends Hadoop
                 $values = array();
             }
             
-            if (strpos($value,self::SERIALIZED) === 0) {
-                $value = unserialize(substr($value, $len));
-            }
+            $this->unserialize($value);
             $values[] = $value;
             $lastkey = $key;
         }
