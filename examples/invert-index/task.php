@@ -9,8 +9,8 @@ final class InvertIndex extends Job
 {
     function __config()
     {
-        $this->setInput("noticias/*");
-        $this->setOutput("index");
+        $this->setInput("news.txt");
+        $this->setOutput("invert-index");
         $this->setReducers(1);
     }
 
@@ -18,7 +18,7 @@ final class InvertIndex extends Job
     {
         $words = array();
         $value = strtolower($value);
-        foreach (preg_split("/[^a-z]/i", $value) as $word) {
+        foreach (preg_split("/[^a-záéíóúüñ]/i", $value) as $word) {
             $words[$word] = 1;
         }
         foreach ($words as $word=>$id) {

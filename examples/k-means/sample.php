@@ -10,6 +10,8 @@ include("iteration.php");
 
 hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
 
+exit();
+
 $hadoop = new Hadoop;
 
 /* create an invert index for fast computation */

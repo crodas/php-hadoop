@@ -6,6 +6,8 @@ Hadoop::import("job.php");
 ini_set("memory_limit", "200M");
 
 
+define("HAS_NO_REDUCER",    2);
+
 /**
  *  Hadoop Class.
  *
@@ -14,7 +16,7 @@ ini_set("memory_limit", "200M");
  */
 abstract class Hadoop
 {
-    private static $_path;
+    private static $_path = false;
     private static $_injob = false;
     private static $_fncWatch = false;
     private $_ipath = false;
@@ -23,6 +25,8 @@ abstract class Hadoop
     private $_tmp;
     private $_reduce;
     private $_map = false;
+    private $_nomap = false;
+    private $_noreduce = false;
 
     final function __construct()
     {
@@ -33,8 +37,18 @@ abstract class Hadoop
         if ($this->_ipath === false || $this->_opath === false) {
             throw new Exception("No input or output path configured");
         }
+        if (!self::$_path) {
+            throw new Exception("No Hadoop-home");
+        }
         $this->_tmp = array(tempnam("/tmp", "map"), tempnam("/tmp", "red"));
         $this->_execTask();
+    }
+
+    final protected function setOption($options)
+    {
+        if ($options & HAS_NO_REDUCER) {
+            $this->_noreduce = true;
+        }
     }
 
     final static function import($file)
@@ -156,6 +170,7 @@ abstract class Hadoop
         /* save the map */
         $map = str_replace("/*name*/", $info->getName(), $map);
         $map = str_replace("/*include*/", $includ, $map);
+        $map = str_replace("/*hadoop-home*/", self::$_path, $map);
         if (array_search($info->getFileName(), get_included_files()) === 0) {
             $map = str_replace("/*class*/", $code, $map);
         }
@@ -165,6 +180,7 @@ abstract class Hadoop
         /* save the reduce */
         $reduce = str_replace("/*name*/", $info->getName(), $reduce);
         $reduce = str_replace("/*include*/", $includ, $reduce);
+        $reduce = str_replace("/*hadoop-home*/", self::$_path, $reduce);
         if (array_search($info->getFileName(), get_included_files()) === 0) {
             $reduce = str_replace("/*class*/", $code, $reduce);
         }
@@ -184,12 +200,16 @@ abstract class Hadoop
         $opath   = $this->_opath;
         $path    = self::$_path;
 
-        $cmd = sprintf("%sbin/hadoop jar %s -input %s -output %s -mapper %s -reducer %s  -file %s -file %s -file %s", 
+        $cmd = sprintf("%sbin/hadoop jar %s -input %s -output %s -file %s -file %s -file %s", 
                 $path, $path.$jarpath, $ipath, $opath, 
-                basename($this->_getFileName("map")), 
-                basename($this->_getFileName("reduce")),
                 $this->_getFileName("map"), $this->_getFileName("reduce"),__FILE__
             );
+
+        $cmd .= " -mapper ".basename($this->_getFileName("map"));
+
+        if (!$this->_noreduce) {
+            $cmd .= " -reducer ".basename($this->_getFileName("reducer"));
+        }
 
         /* set number of mappers */
         if (is_int($this->_map)) {

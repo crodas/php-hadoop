@@ -40,15 +40,16 @@ abstract class Job extends Hadoop
     {
         $this->__init();
         while (($line = fgets(STDIN)) !== false) {
-            $line = substr($line, 0, strlen($line)-1);
+            $line = trim($line);
             if (strlen($line) == 0) {
                 continue;
             }
             $input = $this->mapParser($line);
-            if (count($input) == 1) {
-                $input[1] = $input[0];
-                $input[0] = null;
-            } 
+
+            if (trim($input[0]) == "") {
+                throw new Exception($line);
+            }
+
             $this->unserialize($input[1]);
             $this->map($input[0], $input[1]);
         }
