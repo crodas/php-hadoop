@@ -1,7 +1,14 @@
 <?php
 
-final class InitCluster extends Job
+final class kmeansRandCentroids extends Job
 {
+    function __config()
+    {
+        $this->setInput("cluster/data/");
+        $this->setOutput("cluster/centroids/");
+        $this->setReducers(1);
+    }
+
     function map($key, &$value)
     {
         if (rand(1, 15) == 1) {

@@ -8,7 +8,7 @@ hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
 
 /* run the task */
 try {
-    new InvertIndex();
+    new InvertedIndex();
 } catch (Exception $e) {
     print $e->getMessage()."\n";
 }

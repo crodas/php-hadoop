@@ -3,18 +3,26 @@
 function Array_Merge_ex(&$array, $array1)
 {
     foreach ($array1 as $key => $value) {
-        if (!isset($array[$key])) {
-            $array[$key] = 0;
+            if (!isset($array[$key])) {
+                $array[$key] = 0;
+            }
+            $array[$key] += $value;
         }
-        $array[$key] += $value;
     }
-}
 
 abstract class KmeansBase extends Job
 {
     protected $centroids;
     protected $centroids_id;
     protected $threshold = 0.6;
+
+    function __config()
+    {
+        $this->setInput("cluster/data/");
+        $this->setOutput("cluster/ite-1");
+        $this->setReducers(2);
+        $this->addCache("hdfs://crodas-nb:54310/user/crodas/cluster/centroids/1/part-00000","centroids"); 
+    }
 
     protected function pearson(stdClass &$obj, stdClass &$centroid)
     {
@@ -90,13 +98,15 @@ abstract class KmeansBase extends Job
 
 final class Centroids extends KmeansBase
 {
-    function  __hadoop_init()
+    function  __init()
     {
         $this->threshold = 2;
-        hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
         $centroids = array();
-    
-        $fp = Hadoop::getFile("noticias/centroids/part-00000");
+   
+        if (!is_file("centroids")) { 
+            throw new Exception("file not found");
+        }
+        $fp = fopen("centroids","rb");
         $i=0;
         while ($r = fgets($fp)) {
             if (rand(0,5) == 5) {
@@ -117,21 +127,23 @@ final class Centroids extends KmeansBase
 
 final class kmeansIterator extends KmeansBase
 {
-    function  __hadoop_init()
+    function  __init()
     {
-        hadoop::setHome("/home/crodas/hadoop/hadoop-0.18.3");
         $centroids = array();
     
-        $fp = Hadoop::getFile("noticias/ite-1/centroids/part-00000");
+        if (!is_file("centroids")) { 
+            throw new Exception("file not found");
+        }
+        $fp = fopen("centroids","rb");#Hadoop::getFile("noticias/centroids/part-00000");
         while ($r = fgets($fp)) {
             list($id, $content) = explode("\t", $r, 2);
             $centroids[$id]       = unserialize(trim($content));
             $centroids[$id]->keys = array_keys($centroids[$id]->words);
 
-            $items    = & $centroids[$id]->items;
+            /*$items    = & $centroids[$id]->items;
             foreach (array_keys($items) as $i) {
                 $items[$i]->keys = array_keys($items[$i]->words);
-            }
+            }*/
         }
         $this->centroids    = & $centroids;
         $this->centroids_id = array_keys($centroids);

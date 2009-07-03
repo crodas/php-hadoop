@@ -19,7 +19,7 @@ abstract class Hadoop
     private static $_path = false;
     private static $_injob = false;
     private static $_fncWatch = false;
-    private $_ipath = false;
+    private $_ipath = array();
     private $_opath = false;
     private $_jar = "contrib/streaming/hadoop-0.18.3-streaming.jar";
     private $_tmp;
@@ -27,6 +27,7 @@ abstract class Hadoop
     private $_map = false;
     private $_nomap = false;
     private $_noreduce = false;
+    private $_cache = array();
 
     final function __construct()
     {
@@ -34,7 +35,7 @@ abstract class Hadoop
             return;
         }
         $this->__config();
-        if ($this->_ipath === false || $this->_opath === false) {
+        if ($this->_ipath === array() || $this->_opath === false) {
             throw new Exception("No input or output path configured");
         }
         if (!self::$_path) {
@@ -48,7 +49,13 @@ abstract class Hadoop
     {
         if ($options & HAS_NO_REDUCER) {
             $this->_noreduce = true;
+            $this->_reduce   = 0;
         }
+    }
+
+    final protected function addCache($remote, $file)
+    {
+        $this->_cache[] = "$remote#$file";
     }
 
     final static function import($file)
@@ -140,7 +147,12 @@ abstract class Hadoop
 
     final protected function setInput($path)
     {
-        $this->_ipath = $path;
+        $this->_ipath = array($path);
+    }
+
+    final protected function addInput($path)
+    {
+        $this->_ipath[] = $path;
     }
 
     final protected function setOutput($path)
@@ -200,11 +212,14 @@ abstract class Hadoop
         $opath   = $this->_opath;
         $path    = self::$_path;
 
-        $cmd = sprintf("%sbin/hadoop jar %s -input %s -output %s -file %s -file %s -file %s", 
-                $path, $path.$jarpath, $ipath, $opath, 
+        $cmd = sprintf("%sbin/hadoop jar %s -output %s -file %s -file %s -file %s", 
+                $path, $path.$jarpath, $opath, 
                 $this->_getFileName("map"), $this->_getFileName("reduce"),__FILE__
             );
 
+        foreach ((array) $ipath as $path) {
+            $cmd .= " -input $path";
+        }
         $cmd .= " -mapper ".basename($this->_getFileName("map"));
 
         if (!$this->_noreduce) {
@@ -221,11 +236,16 @@ abstract class Hadoop
             $cmd .= " -jobconf mapred.reduce.tasks=".$this->_reduce;
         }
 
+        foreach ($this->_cache as $cache) {
+            $cmd .= " -cacheFile $cache";
+        }
+
         /* */
         $includes = get_included_files();
         for ($i=2; $i < count($includes); $i++) {
             $cmd .= " -file ".$includes[$i];
         }
+        echo "\n\n$cmd\n\n";
         return $cmd;
     }
 

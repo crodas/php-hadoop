@@ -1,10 +1,14 @@
 <?php
 
-final class InitKMeans extends Job
+final class KMeansInit extends Job
 {
     
-    function map_parser($line) {
-        return explode("||", $line, 2);
+    function __config()
+    {
+        $this->setInput("news.txt");
+        $this->setOutput("cluster/data/");
+        $this->setOption(HAS_NO_REDUCER);
+        $this->setMappers(8);
     }
 
     function map($key, &$text)
@@ -20,7 +24,10 @@ final class InitKMeans extends Job
             }
             $words[$word] += 1; 
         }
-        $this->EmitIntermediate($key, $words);
+        if (count($words) < MIN_WORD_FREQ) {
+            return;
+        }
+        $this->EmitIntermediate($key, self::initNode($words));
     }
 
     final static private function _pearsonPow($number)
@@ -30,12 +37,6 @@ final class InitKMeans extends Job
 
     function reduce($key, &$values)
     {
-        $values = $values[0];
-        if (count($values) < MIN_WORD_FREQ) {
-            return;
-        }
-
-        $this->Emit($key, self::initNode($values) );
     }
 
     public static function initNode(&$values)
@@ -44,7 +45,7 @@ final class InitKMeans extends Job
 
         /* some calculations */
         $tmp->sum = array_sum($values);
-        $tmp->seq = array_sum(array_map(array("initKMeans", "_pearsonpow"), $values));
+        $tmp->seq = array_sum(array_map(array("self", "_pearsonpow"), $values));
         $tmp->den = $tmp->seq - pow($tmp->sum, 2) / WORD_MATRIX_X; 
 
         ksort($values);

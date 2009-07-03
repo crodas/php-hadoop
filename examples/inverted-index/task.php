@@ -5,13 +5,14 @@
  *
  *  This class contains an Invert Index.
  */
-final class InvertIndex extends Job
+final class InvertedIndex extends Job
 {
     function __config()
     {
         $this->setInput("news.txt");
-        $this->setOutput("invert-index");
-        $this->setReducers(1);
+        $this->setOutput("inverted-index");
+        $this->setMappers(4);
+        $this->setReducers(2);
     }
 
     function map($key, &$value)
